@@ -156,13 +156,22 @@ func (c cpp) generateCallCode(q *leetcode.QuestionData) (callCode string) {
 	}
 
 	if !q.MetaData.SystemDesign {
-		callCode = fmt.Sprintf(
-			"\tauto %s = %s->%s(%s);\n",
-			returnName,
-			objectName,
-			q.MetaData.Name,
-			c.getParamString(q.MetaData.Params),
-		)
+		if q.MetaData.Return != nil && q.MetaData.Return.Type != "void" {
+			callCode = fmt.Sprintf(
+				"\tauto %s = %s->%s(%s);\n",
+				returnName,
+				objectName,
+				q.MetaData.Name,
+				c.getParamString(q.MetaData.Params),
+			)
+		} else {
+			callCode = fmt.Sprintf(
+				"\t%s->%s(%s);\n",
+				objectName,
+				q.MetaData.Name,
+				c.getParamString(q.MetaData.Params),
+			)
+		}
 	} else {
 		/* define methods */ {
 			callCode = fmt.Sprintf(
@@ -238,7 +247,14 @@ func (c cpp) generateCallCode(q *leetcode.QuestionData) (callCode string) {
 
 func (c cpp) generatePrintCode(q *leetcode.QuestionData) (printCode string) {
 	if !q.MetaData.SystemDesign {
-		printCode += "\t" + c.getPrintCodeForType(returnName, outputStreamName) + "\n"
+		if q.MetaData.Return != nil && q.MetaData.Return.Type != "void" {
+			printCode += "\t" + c.getPrintCodeForType(returnName, outputStreamName) + "\n"
+		} else if q.MetaData.Output != nil {
+			outputParamName := q.MetaData.Params[q.MetaData.Output.ParamIndex].Name
+			printCode += "\t" + c.getPrintCodeForType(outputParamName, outputStreamName) + "\n"
+		} else {
+			printCode += fmt.Sprintf("\t%s << \"null\";\n", outputStreamName)
+		}
 	}
 	printCode += fmt.Sprintf("\tcout << \"\\n%s \" << %s.rdbuf() << endl;\n", testCaseOutputMark, outputStreamName)
 	return printCode
