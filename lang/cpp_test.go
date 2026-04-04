@@ -79,6 +79,36 @@ func TestGeneratePrintCode_VoidReturn_WithOutput(t *testing.T) {
 	}
 }
 
+// buildVoidNoOutputQuestion returns a minimal QuestionData for a void method
+// with no Output metadata, exercising the "null" fallback branch.
+func buildVoidNoOutputQuestion() *leetcode.QuestionData {
+	return &leetcode.QuestionData{
+		TitleSlug: "void-no-output",
+		MetaData: leetcode.MetaData{
+			Name: "doSomething",
+			Params: []leetcode.MetaDataParam{
+				{Name: "x", Type: "integer"},
+			},
+			Return: &leetcode.MetaDataReturn{Type: "void"},
+			// Output is nil — should trigger "null" fallback
+		},
+	}
+}
+
+func TestGeneratePrintCode_VoidReturn_NoOutput(t *testing.T) {
+	c := cpp{}
+	q := buildVoidNoOutputQuestion()
+	code := c.generatePrintCode(q)
+
+	// Must NOT print res or any param — should print "null"
+	if strings.Contains(code, "out_stream, res") {
+		t.Errorf("generatePrintCode for void without Output should not print res, got:\n%s", code)
+	}
+	if !strings.Contains(code, `"null"`) {
+		t.Errorf("generatePrintCode for void without Output should print \"null\", got:\n%s", code)
+	}
+}
+
 func TestGeneratePrintCode_NonVoidReturn(t *testing.T) {
 	c := cpp{}
 	q := buildNonVoidQuestion()
