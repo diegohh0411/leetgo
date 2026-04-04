@@ -120,38 +120,39 @@ func initCommands() {
 	_ = viper.BindPFlag("yes", rootCmd.PersistentFlags().Lookup("yes"))
 
 	_ = rootCmd.RegisterFlagCompletionFunc(
-		"lang", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			langs := make([]string, 0, len(lang.SupportedLangs))
-			for _, l := range lang.SupportedLangs {
-				langs = append(langs, l.Slug())
-			}
-			return langs, cobra.ShellCompDirectiveNoFileComp
-		},
-	)
+			"lang", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				langs := make([]string, 0, len(lang.SupportedLangs))
+				for _, l := range lang.SupportedLangs {
+					langs = append(langs, l.Slug())
+				}
+				return langs, cobra.ShellCompDirectiveNoFileComp
+			},
+		)
 	_ = rootCmd.RegisterFlagCompletionFunc(
-		"site",
-		func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return []string{"cn", "us"}, cobra.ShellCompDirectiveNoFileComp
-		},
-	)
+			"site",
+			func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return []string{"cn", "us"}, cobra.ShellCompDirectiveNoFileComp
+			},
+		)
 
 	commands := []*cobra.Command{
-		initCmd,
-		pickCmd,
-		infoCmd,
-		testCmd,
-		submitCmd,
-		fixCmd,
-		editCmd,
-		extractCmd,
-		contestCmd,
-		cacheCmd,
-		debugCmd,
-		gitCmd,
-		inspectCmd,
-		whoamiCmd,
-		openCmd,
-	}
+			initCmd,
+			pickCmd,
+			infoCmd,
+			testCmd,
+			submitCmd,
+			fixCmd,
+			editCmd,
+			recordCmd,
+			extractCmd,
+			contestCmd,
+			cacheCmd,
+			debugCmd,
+			gitCmd,
+			inspectCmd,
+			whoamiCmd,
+			openCmd,
+		}
 	for _, cmd := range commands {
 		cmd.Flags().SortFlags = false
 		cmd.PersistentPreRunE = preRun
