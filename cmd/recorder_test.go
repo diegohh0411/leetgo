@@ -73,8 +73,6 @@ func TestBuildFFmpegArgsWindows(t *testing.T) {
 	pc := platformConfig{inputFormat: "dshow", inputDevice: "", canPause: false}
 	args := pc.buildArgs("/tmp/attempt-1.mp3")
 
-	// Windows dshow uses -i audio=Microphone (device auto-detected at runtime)
-	// Without a specific device, it should just use -i with no device name
 	found := false
 	for _, a := range args {
 		if a == "-f" {
@@ -83,5 +81,28 @@ func TestBuildFFmpegArgsWindows(t *testing.T) {
 	}
 	if !found {
 		t.Error("args should contain -f flag")
+	}
+}
+
+func TestBuildVizArgs(t *testing.T) {
+	pc := platformConfig{inputFormat: "pulse", inputDevice: "default"}
+	args := pc.buildVizArgs("/tmp/attempt-1.mp3")
+
+	// Must contain asplit filter and pipe:1 output
+	hasAsplit := false
+	hasPipe := false
+	for _, a := range args {
+		if a == "[0:a]asplit=2[a][b]" {
+			hasAsplit = true
+		}
+		if a == "pipe:1" {
+			hasPipe = true
+		}
+	}
+	if !hasAsplit {
+		t.Error("viz args should contain asplit filter")
+	}
+	if !hasPipe {
+		t.Error("viz args should contain pipe:1 output")
 	}
 }

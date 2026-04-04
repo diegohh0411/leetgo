@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -50,6 +51,23 @@ func (pc platformConfig) buildArgs(outputPath string) []string {
 	return args
 }
 
+// buildVizArgs constructs ffmpeg args that write MP3 to file AND pipe raw PCM to stdout.
+func (pc platformConfig) buildVizArgs(outputPath string) []string {
+	args := []string{"-f", pc.inputFormat}
+	if pc.inputDevice != "" {
+		args = append(args, "-i", pc.inputDevice)
+	} else {
+		args = append(args, "-i", "audio")
+	}
+	// Split audio: stream [a] → MP3 file, stream [b] → raw PCM to stdout
+	args = append(args,
+		"-filter_complex", "[0:a]asplit=2[a][b]",
+		"-map", "[a]", "-c:a", "libmp3lame", "-q:a", "2", "-y", outputPath,
+		"-map", "[b]", "-f", "s16le", "-ac", "1", "-ar", "44100", "pipe:1",
+	)
+	return args
+}
+
 // checkFFmpeg verifies that ffmpeg is available on PATH.
 func checkFFmpeg() error {
 	_, err := exec.LookPath("ffmpeg")
@@ -59,14 +77,22 @@ func checkFFmpeg() error {
 	return nil
 }
 
-// startRecording spawns an ffmpeg subprocess that records audio to outputPath.
-func startRecording(outputPath string) (*exec.Cmd, error) {
+// startRecording spawns ffmpeg that writes MP3 to file and pipes raw PCM to stdout.
+func startRecording(outputPath string) (*exec.Cmd, io.Reader, error) {
 	pc := detectPlatform()
-	args := pc.buildArgs(outputPath)
+	args := pc.buildVizArgs(outputPath)
 
 	cmd := exec.Command("ffmpeg", args...)
-	cmd.Stderr = nil // suppress ffmpeg's verbose stderr; TUI handles errors
-	return cmd, cmd.Start()
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+	cmd.Stderr = nil
+
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+	return cmd, pipe, nil
 }
 
 // stopRecording sends SIGINT to ffmpeg so it flushes and exits cleanly.

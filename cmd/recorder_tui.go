@@ -1,12 +1,21 @@
 package cmd
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
+	"math"
 	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+const (
+	numBands  = 16
+	sampleRate = 44100
+	pcmChunkSize = 2048 // samples per read (matches FFT input size)
 )
 
 type recorderStatus int
@@ -20,17 +29,30 @@ const (
 	statusError
 )
 
+// Unicode block characters for EQ bars, from lowest to highest.
+var blockChars = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+// Colors for EQ bars, gradient from green to yellow to red.
+var bandColors = []string{
+	"#5fff5f", "#5fff5f", "#afff5f", "#afff5f",
+	"#dfff5f", "#dfff5f", "#ffff5f", "#ffff5f",
+	"#ffdf5f", "#ffdf5f", "#ffaf00", "#ffaf00",
+	"#ff8700", "#ff8700", "#ff5f5f", "#ff5f5f",
+}
+
 // recorderModel is the bubbletea model for the audio recording TUI.
 type recorderModel struct {
 	outDir     string
 	filename   string
 	outputPath string
 	cmd        *exec.Cmd
+	pipe       io.Reader
 	status     recorderStatus
 	startTime  time.Time
 	elapsed    time.Duration
 	err        error
 	canPause   bool
+	bands      []float64 // 16 frequency band levels, 0.0–1.0
 }
 
 // tickMsg is sent every 100ms to update the timer display.
@@ -39,6 +61,9 @@ type tickMsg time.Time
 // errMsg wraps an error from ffmpeg.
 type errMsg error
 
+// bandsMsg carries frequency band levels from the PCM reader.
+type bandsMsg []float64
+
 // runRecorderTUI launches the bubbletea recording interface.
 func runRecorderTUI(outDir, filename, outputPath string) error {
 	m := &recorderModel{
@@ -46,6 +71,7 @@ func runRecorderTUI(outDir, filename, outputPath string) error {
 		filename:   filename,
 		outputPath: outputPath,
 		canPause:   detectPlatform().canPause,
+		bands:      make([]float64, numBands),
 	}
 	p := tea.NewProgram(m)
 	_, err := p.Run()
@@ -53,15 +79,16 @@ func runRecorderTUI(outDir, filename, outputPath string) error {
 }
 
 func (m *recorderModel) Init() tea.Cmd {
-	// Start the ffmpeg subprocess.
-	cmd, err := startRecording(m.outputPath)
+	// Start the ffmpeg subprocess (writes MP3 + pipes raw PCM).
+	cmd, pipe, err := startRecording(m.outputPath)
 	if err != nil {
 		return func() tea.Msg { return errMsg(err) }
 	}
 	m.cmd = cmd
+	m.pipe = pipe
 	m.startTime = time.Now()
 	m.status = statusRecording
-	return tickCmd()
+	return tea.Batch(tickCmd(), readPCMCmd(m.pipe))
 }
 
 func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -72,6 +99,14 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.status == statusRecording || m.status == statusPaused {
 			return m, tickCmd()
+		}
+		return m, nil
+
+	case bandsMsg:
+		m.bands = msg
+		// Keep reading while recording or paused (pipe stays open).
+		if m.status == statusRecording || m.status == statusPaused {
+			return m, readPCMCmd(m.pipe)
 		}
 		return m, nil
 
@@ -113,20 +148,7 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *recorderModel) View() string {
-	width := 60
-
-	var statusLine string
 	switch m.status {
-	case statusRecording:
-		indicator := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5f5f")).Bold(true).Render("⏺")
-		controls := "[space] pause  [q] stop  [ctrl+c] cancel"
-		statusLine = fmt.Sprintf("%s %s  Recording %s  %s",
-			indicator, formatDuration(m.elapsed), m.filename, controls)
-	case statusPaused:
-		indicator := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffaf00")).Bold(true).Render("⏸")
-		controls := "[space] resume  [q] stop  [ctrl+c] cancel"
-		statusLine = fmt.Sprintf("%s %s  Paused  %s",
-			indicator, formatDuration(m.elapsed), controls)
 	case statusDone:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#5fff5f")).Render(
 			fmt.Sprintf("✓ Saved %s (%s)", m.filename, formatDuration(m.elapsed)))
@@ -137,8 +159,120 @@ func (m *recorderModel) View() string {
 			fmt.Sprintf("Error: %v", m.err))
 	}
 
-	return fmt.Sprintf("Recording to: %s\n%s", m.filename,
-		lipgloss.NewStyle().Width(width).Render(statusLine))
+	// Status indicator
+	var indicator string
+	var controls string
+	switch m.status {
+	case statusRecording:
+		indicator = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5f5f")).Bold(true).Render("⏺")
+		controls = "[space] pause  [q] stop  [ctrl+c] cancel"
+	case statusPaused:
+		indicator = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffaf00")).Bold(true).Render("⏸")
+		controls = "[space] resume  [q] stop  [ctrl+c] cancel"
+	}
+
+	// EQ bars
+	eqLine := renderEQ(m.bands)
+
+	return fmt.Sprintf("%s %s  Recording %s\n%s\n%s",
+		indicator, formatDuration(m.elapsed), m.filename,
+		eqLine,
+		lipgloss.NewStyle().Faint(true).Render(controls))
+}
+
+// renderEQ renders the 16 frequency bands as colored block characters.
+func renderEQ(bands []float64) string {
+	parts := make([]string, len(bands))
+	for i, level := range bands {
+		idx := int(level * float64(len(blockChars)-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(blockChars) {
+			idx = len(blockChars) - 1
+		}
+		char := string(blockChars[idx])
+		color := bandColors[i%len(bandColors)]
+		parts[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(char)
+	}
+	// Join with spaces for readability
+	result := ""
+	for i, p := range parts {
+		if i > 0 {
+			result += " "
+		}
+		result += p
+	}
+	return result
+}
+
+// readPCMCmd reads a chunk of raw PCM from the pipe, runs FFT,
+// and returns frequency band levels as a bandsMsg.
+func readPCMCmd(pipe io.Reader) tea.Cmd {
+	return func() tea.Msg {
+		buf := make([]byte, pcmChunkSize*2) // s16le = 2 bytes per sample
+		_, err := io.ReadFull(pipe, buf)
+		if err != nil {
+			return nil // pipe closed, stop reading
+		}
+
+		// Convert s16le bytes to float64 samples
+		samples := make([]float64, pcmChunkSize)
+		for i := range samples {
+			sample := int16(binary.LittleEndian.Uint16(buf[i*2 : i*2+2]))
+			samples[i] = float64(sample) / 32768.0
+		}
+
+		return bandsMsg(analyzeBands(samples))
+	}
+}
+
+// analyzeBands runs FFT on samples and groups frequency bins into 16 bands.
+func analyzeBands(samples []float64) []float64 {
+	mags := magnitudeSpectrum(samples)
+
+	bands := make([]float64, numBands)
+	binHz := float64(sampleRate) / float64(len(samples))
+
+	// Logarithmic band grouping over voice range (80 Hz – 8000 Hz)
+	minFreq := 80.0
+	maxFreq := 8000.0
+
+	for i := 0; i < numBands; i++ {
+		lo := minFreq * math.Pow(maxFreq/minFreq, float64(i)/float64(numBands))
+		hi := minFreq * math.Pow(maxFreq/minFreq, float64(i+1)/float64(numBands))
+		loBin := int(lo / binHz)
+		hiBin := int(hi / binHz)
+		if loBin < 0 {
+			loBin = 0
+		}
+		if hiBin >= len(mags) {
+			hiBin = len(mags) - 1
+		}
+
+		var sum float64
+		count := 0
+		for b := loBin; b <= hiBin; b++ {
+			sum += mags[b]
+			count++
+		}
+		if count > 0 {
+			bands[i] = sum / float64(count)
+		}
+	}
+
+	// Normalize relative to current frame max
+	maxBand := 0.001
+	for _, b := range bands {
+		if b > maxBand {
+			maxBand = b
+		}
+	}
+	for i := range bands {
+		bands[i] = math.Min(bands[i]/maxBand, 1.0)
+	}
+
+	return bands
 }
 
 // tickCmd returns a command that sends a tickMsg after 100ms.
