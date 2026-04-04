@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	numBands  = 16
-	sampleRate = 44100
+	sampleRate   = 44100
 	pcmChunkSize = 2048 // samples per read (matches FFT input size)
 )
 
@@ -32,14 +31,6 @@ const (
 // Unicode block characters for EQ bars, from lowest to highest.
 var blockChars = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
-// Colors for EQ bars, gradient from green to yellow to red.
-var bandColors = []string{
-	"#5fff5f", "#5fff5f", "#afff5f", "#afff5f",
-	"#dfff5f", "#dfff5f", "#ffff5f", "#ffff5f",
-	"#ffdf5f", "#ffdf5f", "#ffaf00", "#ffaf00",
-	"#ff8700", "#ff8700", "#ff5f5f", "#ff5f5f",
-}
-
 // recorderModel is the bubbletea model for the audio recording TUI.
 type recorderModel struct {
 	outDir     string
@@ -52,7 +43,8 @@ type recorderModel struct {
 	elapsed    time.Duration
 	err        error
 	canPause   bool
-	bands      []float64 // 16 frequency band levels, 0.0–1.0
+	bands      []float64 // frequency band levels, 0.0–1.0
+	width      int       // terminal width in columns
 }
 
 // tickMsg is sent every 100ms to update the timer display.
@@ -64,6 +56,19 @@ type errMsg error
 // bandsMsg carries frequency band levels from the PCM reader.
 type bandsMsg []float64
 
+// numBandsForWidth returns how many EQ bands fit the given terminal width.
+// Each band takes 2 chars (block + space), minus 1 for the last band.
+func numBandsForWidth(w int) int {
+	if w <= 0 {
+		return 16
+	}
+	n := (w + 1) / 2
+	if n < 4 {
+		n = 4
+	}
+	return n
+}
+
 // runRecorderTUI launches the bubbletea recording interface.
 func runRecorderTUI(outDir, filename, outputPath string) error {
 	m := &recorderModel{
@@ -71,8 +76,9 @@ func runRecorderTUI(outDir, filename, outputPath string) error {
 		filename:   filename,
 		outputPath: outputPath,
 		canPause:   detectPlatform().canPause,
-		bands:      make([]float64, numBands),
+		width:      80, // default before first WindowSizeMsg
 	}
+	m.bands = make([]float64, numBandsForWidth(m.width))
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
@@ -88,11 +94,19 @@ func (m *recorderModel) Init() tea.Cmd {
 	m.pipe = pipe
 	m.startTime = time.Now()
 	m.status = statusRecording
-	return tea.Batch(tickCmd(), readPCMCmd(m.pipe))
+	return tea.Batch(tickCmd(), readPCMCmd(m.pipe, numBandsForWidth(m.width)))
 }
 
 func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		n := numBandsForWidth(m.width)
+		if len(m.bands) != n {
+			m.bands = make([]float64, n)
+		}
+		return m, nil
+
 	case tickMsg:
 		if m.status == statusRecording {
 			m.elapsed = time.Since(m.startTime)
@@ -106,7 +120,7 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bands = msg
 		// Keep reading while recording or paused (pipe stays open).
 		if m.status == statusRecording || m.status == statusPaused {
-			return m, readPCMCmd(m.pipe)
+			return m, readPCMCmd(m.pipe, numBandsForWidth(m.width))
 		}
 		return m, nil
 
@@ -171,7 +185,7 @@ func (m *recorderModel) View() string {
 		controls = "[space] resume  [q] stop  [ctrl+c] cancel"
 	}
 
-	// EQ bars
+	// EQ bars — black & white, full terminal width
 	eqLine := renderEQ(m.bands)
 
 	return fmt.Sprintf("%s %s  Recording %s\n%s\n%s",
@@ -180,9 +194,9 @@ func (m *recorderModel) View() string {
 		lipgloss.NewStyle().Faint(true).Render(controls))
 }
 
-// renderEQ renders the 16 frequency bands as colored block characters.
+// renderEQ renders frequency bands as plain block characters, full width.
 func renderEQ(bands []float64) string {
-	parts := make([]string, len(bands))
+	result := make([]byte, 0, len(bands)*2)
 	for i, level := range bands {
 		idx := int(level * float64(len(blockChars)-1))
 		if idx < 0 {
@@ -191,24 +205,17 @@ func renderEQ(bands []float64) string {
 		if idx >= len(blockChars) {
 			idx = len(blockChars) - 1
 		}
-		char := string(blockChars[idx])
-		color := bandColors[i%len(bandColors)]
-		parts[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(char)
-	}
-	// Join with spaces for readability
-	result := ""
-	for i, p := range parts {
-		if i > 0 {
-			result += " "
+		result = append(result, string(blockChars[idx])...)
+		if i < len(bands)-1 {
+			result = append(result, ' ')
 		}
-		result += p
 	}
-	return result
+	return string(result)
 }
 
 // readPCMCmd reads a chunk of raw PCM from the pipe, runs FFT,
 // and returns frequency band levels as a bandsMsg.
-func readPCMCmd(pipe io.Reader) tea.Cmd {
+func readPCMCmd(pipe io.Reader, numBands int) tea.Cmd {
 	return func() tea.Msg {
 		buf := make([]byte, pcmChunkSize*2) // s16le = 2 bytes per sample
 		_, err := io.ReadFull(pipe, buf)
@@ -223,24 +230,24 @@ func readPCMCmd(pipe io.Reader) tea.Cmd {
 			samples[i] = float64(sample) / 32768.0
 		}
 
-		return bandsMsg(analyzeBands(samples))
+		return bandsMsg(analyzeBands(samples, numBands))
 	}
 }
 
-// analyzeBands runs FFT on samples and groups frequency bins into 16 bands.
-func analyzeBands(samples []float64) []float64 {
+// analyzeBands runs FFT on samples and groups frequency bins into n bands.
+func analyzeBands(samples []float64, n int) []float64 {
 	mags := magnitudeSpectrum(samples)
 
-	bands := make([]float64, numBands)
+	bands := make([]float64, n)
 	binHz := float64(sampleRate) / float64(len(samples))
 
 	// Logarithmic band grouping over voice range (80 Hz – 8000 Hz)
 	minFreq := 80.0
 	maxFreq := 8000.0
 
-	for i := 0; i < numBands; i++ {
-		lo := minFreq * math.Pow(maxFreq/minFreq, float64(i)/float64(numBands))
-		hi := minFreq * math.Pow(maxFreq/minFreq, float64(i+1)/float64(numBands))
+	for i := 0; i < n; i++ {
+		lo := minFreq * math.Pow(maxFreq/minFreq, float64(i)/float64(n))
+		hi := minFreq * math.Pow(maxFreq/minFreq, float64(i+1)/float64(n))
 		loBin := int(lo / binHz)
 		hiBin := int(hi / binHz)
 		if loBin < 0 {
