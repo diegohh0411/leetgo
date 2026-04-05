@@ -14,8 +14,8 @@ import (
 	"github.com/j178/leetgo/lang"
 	"github.com/j178/leetgo/leetcode"
 
-	_ "github.com/j178/leetgo/stt_providers/elevenlabs"
 	stt "github.com/j178/leetgo/stt_providers"
+	_ "github.com/j178/leetgo/stt_providers/elevenlabs"
 )
 
 var transcribeForce bool
