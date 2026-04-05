@@ -97,7 +97,10 @@ func (t *Transcriber) Transcribe(audioPath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("ElevenLabs API error: %d %s", resp.StatusCode, string(body))

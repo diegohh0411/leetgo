@@ -58,7 +58,9 @@ func TestTranscribeAPIError(t *testing.T) {
 
 	dir := t.TempDir()
 	audioPath := filepath.Join(dir, "attempt-1.mp3")
-	os.WriteFile(audioPath, []byte("fake"), 0o644)
+	if err := os.WriteFile(audioPath, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := tr.Transcribe(audioPath)
 	if err == nil {
@@ -76,7 +78,9 @@ func TestTranscribeEmptyResponse(t *testing.T) {
 
 	dir := t.TempDir()
 	audioPath := filepath.Join(dir, "attempt-1.mp3")
-	os.WriteFile(audioPath, []byte("fake"), 0o644)
+	if err := os.WriteFile(audioPath, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	text, err := tr.Transcribe(audioPath)
 	if err != nil {
@@ -117,7 +121,9 @@ func TestNoAPIKey(t *testing.T) {
 	tr := NewFactory(config)
 	dir := t.TempDir()
 	audioPath := filepath.Join(dir, "attempt-1.mp3")
-	os.WriteFile(audioPath, []byte("fake"), 0o644)
+	if err := os.WriteFile(audioPath, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := tr.Transcribe(audioPath)
 	if err == nil {
