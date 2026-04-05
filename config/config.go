@@ -44,6 +44,22 @@ type Config struct {
 	LeetCode    LeetCodeConfig `yaml:"leetcode" mapstructure:"leetcode"`
 	Contest     ContestConfig  `yaml:"contest" mapstructure:"contest"`
 	Editor      Editor         `yaml:"editor" mapstructure:"editor" comment:"Editor settings to open generated files."`
+	Audio       AudioConfig    `yaml:"audio" mapstructure:"audio"`
+}
+
+type AudioConfig struct {
+	Transcribe TranscribeConfig `yaml:"transcribe" mapstructure:"transcribe"`
+	Analyze    AnalyzeConfig    `yaml:"analyze" mapstructure:"analyze"`
+}
+
+type TranscribeConfig struct {
+	Provider   string         `yaml:"provider" mapstructure:"provider"`
+	ElevenLabs map[string]any `yaml:"elevenlabs" mapstructure:"elevenlabs"`
+}
+
+type AnalyzeConfig struct {
+	Provider string         `yaml:"provider" mapstructure:"provider"`
+	Claude   map[string]any `yaml:"claude" mapstructure:"claude"`
 }
 
 type ContestConfig struct {
