@@ -44,6 +44,7 @@ type Config struct {
 	LeetCode    LeetCodeConfig `yaml:"leetcode" mapstructure:"leetcode"`
 	Contest     ContestConfig  `yaml:"contest" mapstructure:"contest"`
 	Editor      Editor         `yaml:"editor" mapstructure:"editor" comment:"Editor settings to open generated files."`
+	Audio       AudioConfig    `yaml:"audio" mapstructure:"audio"`
 }
 
 type ContestConfig struct {
@@ -56,6 +57,21 @@ type Editor struct {
 	Use     string `yaml:"use" mapstructure:"use" comment:"Use a predefined editor: vim, vscode, goland\nSet to 'none' to disable, set to 'custom' to provide your own command and args."`
 	Command string `yaml:"command" mapstructure:"command" comment:"Custom command to open files."`
 	Args    string `yaml:"args" mapstructure:"args" comment:"Arguments to your custom command.\nString contains {{.CodeFile}}, {{.TestFile}}, {{.DescriptionFile}}, {{.TestCasesFile}} will be replaced with corresponding file path.\n{{.Folder}} will be substituted with the output directory.\n{{.Files}} will be substituted with the list of all file paths."`
+}
+
+type AudioConfig struct {
+	Transcribe TranscribeConfig `yaml:"transcribe" mapstructure:"transcribe"`
+	Analyze    AnalyzeConfig    `yaml:"analyze" mapstructure:"analyze"`
+}
+
+type TranscribeConfig struct {
+	Provider   string         `yaml:"provider" mapstructure:"provider"`
+	ElevenLabs map[string]any `yaml:"elevenlabs" mapstructure:"elevenlabs"`
+}
+
+type AnalyzeConfig struct {
+	Provider string         `yaml:"provider" mapstructure:"provider"`
+	Claude   map[string]any `yaml:"claude" mapstructure:"claude"`
 }
 
 type Block struct {
