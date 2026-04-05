@@ -56,6 +56,9 @@ type errMsg error
 // bandsMsg carries frequency band levels from the PCM reader.
 type bandsMsg []float64
 
+// stopDoneMsg signals that ffmpeg has finished flushing and exited.
+type stopDoneMsg struct{ err error }
+
 // numBandsForWidth returns how many EQ bands fit the given terminal width.
 // Each band takes 2 chars (block + space), minus 1 for the last band.
 func numBandsForWidth(w int) int {
@@ -137,19 +140,24 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg
 		return m, tea.Quit
 
+	case stopDoneMsg:
+		if msg.err != nil {
+			m.status = statusError
+			m.err = fmt.Errorf("failed to stop recording: %w", msg.err)
+		} else {
+			m.status = statusDone
+		}
+		return m, tea.Quit
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "enter":
-			// Stop recording and save — must be synchronous so ffmpeg
-			// flushes the MP3 before we return the path to the caller.
+			// Signal ffmpeg to stop; wait for it to flush the MP3 before quitting.
 			m.status = statusStopping
-			if err := stopRecording(m.cmd); err != nil {
-				m.status = statusError
-				m.err = fmt.Errorf("failed to stop recording: %w", err)
-				return m, tea.Quit
+			cmd := m.cmd
+			return m, func() tea.Msg {
+				return stopDoneMsg{err: stopRecording(cmd)}
 			}
-			m.status = statusDone
-			return m, tea.Quit
 
 		case " ":
 			if !m.canPause {
