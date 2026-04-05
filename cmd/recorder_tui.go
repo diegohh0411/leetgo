@@ -140,9 +140,14 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "enter":
-			// Stop recording and save.
+			// Stop recording and save — must be synchronous so ffmpeg
+			// flushes the MP3 before we return the path to the caller.
 			m.status = statusStopping
-			go func() { _ = stopRecording(m.cmd) }()
+			if err := stopRecording(m.cmd); err != nil {
+				m.status = statusError
+				m.err = fmt.Errorf("failed to stop recording: %w", err)
+				return m, tea.Quit
+			}
 			m.status = statusDone
 			return m, tea.Quit
 

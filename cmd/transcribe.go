@@ -161,7 +161,13 @@ func runTranscribe(cmd *cobra.Command, args []string) error {
 		}
 
 		if text == "" {
-			fmt.Printf("  Warning: transcript for %s appears empty\n", audioFile)
+			fmt.Printf("  Warning: transcript for %s is empty, skipping\n", audioFile)
+			continue
+		}
+
+		// Append audio duration metadata.
+		if dur := audioDuration(audioPath); dur != "" {
+			text += fmt.Sprintf("\n\n---\nAudio duration: %s\n", dur)
 		}
 
 		// Derive output filename: attempt-N.mp3 → attempt-N.md

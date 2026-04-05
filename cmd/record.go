@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -78,6 +79,27 @@ func promptYesNo(question string, defaultYes bool) bool {
 	return input == "y" || input == "yes"
 }
 
+// audioDuration returns the duration of an audio file as a formatted string (e.g. "08:23")
+// using ffprobe. Returns empty string if ffprobe fails.
+func audioDuration(audioPath string) string {
+	out, err := exec.Command(
+		"ffprobe", "-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		audioPath,
+	).Output()
+	if err != nil {
+		return ""
+	}
+	secs, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil {
+		return ""
+	}
+	m := int(secs) / 60
+	s := int(secs) % 60
+	return fmt.Sprintf("%02d:%02d", m, s)
+}
+
 // transcribeFile transcribes a single audio file using the configured provider.
 func transcribeFile(audioPath, outDir string) error {
 	cfg := config.Get()
@@ -99,6 +121,11 @@ func transcribeFile(audioPath, outDir string) error {
 	text, err := provider.Transcribe(audioPath)
 	if err != nil {
 		return err
+	}
+
+	// Append audio duration metadata so analysis providers know how long the attempt took.
+	if dur := audioDuration(audioPath); dur != "" {
+		text += fmt.Sprintf("\n\n---\nAudio duration: %s\n", dur)
 	}
 
 	// Derive md filename from mp3 filename.
@@ -197,6 +224,11 @@ func runRecord(cmd *cobra.Command, args []string) error {
 
 	// If recording was saved, offer post-recording workflow.
 	if savedPath != "" {
+		// Verify the audio file actually exists before offering transcription.
+		if _, err := os.Stat(savedPath); err != nil {
+			return fmt.Errorf("recording was not saved: %w", err)
+		}
+
 		fmt.Println() // blank line after TUI
 		if promptYesNo("Transcribe now?", true) {
 			if err := transcribeFile(savedPath, outDir); err != nil {

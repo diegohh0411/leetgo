@@ -2,6 +2,7 @@ package elevenlabs
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	stt "github.com/j178/leetgo/stt_providers"
 )
@@ -76,15 +78,20 @@ func (t *Transcriber) Transcribe(audioPath string) (string, error) {
 		return "", fmt.Errorf("failed to write audio data: %w", err)
 	}
 
-	_ = writer.WriteField("model_id", t.model)
+	if err := writer.WriteField("model_id", t.model); err != nil {
+		return "", fmt.Errorf("failed to write model_id field: %w", err)
+	}
 
 	if err := writer.Close(); err != nil {
 		return "", fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	// Send request
+	// Send request with a 5-minute timeout for large audio uploads.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
 	url := t.baseURL + "/v1/speech-to-text"
-	req, err := http.NewRequest("POST", url, &buf)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, &buf)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
