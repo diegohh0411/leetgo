@@ -15,8 +15,8 @@ import (
 	"github.com/j178/leetgo/lang"
 	"github.com/j178/leetgo/leetcode"
 
-	_ "github.com/j178/leetgo/analysis_providers/claude"
 	analysis "github.com/j178/leetgo/analysis_providers"
+	_ "github.com/j178/leetgo/analysis_providers/claude"
 )
 
 var analyzeForce bool
@@ -43,8 +43,8 @@ func readTranscripts(dir string) []string {
 	}
 
 	type numbered struct {
-		n      int
-		path   string
+		n    int
+		path string
 	}
 	var files []numbered
 	for _, e := range entries {
