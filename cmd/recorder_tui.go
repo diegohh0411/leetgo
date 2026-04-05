@@ -70,7 +70,8 @@ func numBandsForWidth(w int) int {
 }
 
 // runRecorderTUI launches the bubbletea recording interface.
-func runRecorderTUI(outDir, filename, outputPath string) error {
+// Returns the output path if recording was saved, empty string if cancelled.
+func runRecorderTUI(outDir, filename, outputPath string) (string, error) {
 	m := &recorderModel{
 		outDir:     outDir,
 		filename:   filename,
@@ -81,7 +82,14 @@ func runRecorderTUI(outDir, filename, outputPath string) error {
 	m.bands = make([]float64, numBandsForWidth(m.width))
 	p := tea.NewProgram(m)
 	_, err := p.Run()
-	return err
+	if err != nil {
+		return "", err
+	}
+
+	if m.status == statusDone {
+		return outputPath, nil
+	}
+	return "", nil
 }
 
 func (m *recorderModel) Init() tea.Cmd {
