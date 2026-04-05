@@ -144,6 +144,7 @@ func initCommands() {
 			fixCmd,
 			editCmd,
 			recordCmd,
+			transcribeCmd,
 			extractCmd,
 			contestCmd,
 			cacheCmd,
