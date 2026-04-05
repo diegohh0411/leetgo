@@ -207,12 +207,12 @@ func runAnalysis(q *leetcode.QuestionData, outDir string) error {
 		Transcripts: transcripts,
 	}
 
+	analysisPath := filepath.Join(outDir, "analysis.md")
+	fmt.Println("Analyzing...")
 	text, err := provider.Analyze(ctx)
 	if err != nil {
 		return err
 	}
 
-	analysisPath := filepath.Join(outDir, "analysis.md")
-	fmt.Println("Analyzing...")
 	return os.WriteFile(analysisPath, []byte(text), 0o644)
 }

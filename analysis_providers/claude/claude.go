@@ -64,7 +64,7 @@ func (a *Analyzer) Analyze(ctx analysis.AnalysisContext) (string, error) {
 func buildPrompt(ctx analysis.AnalysisContext) string {
 	transcripts := strings.Join(ctx.Transcripts, "\n\n---\n\n")
 
-	return fmt.Sprintf(`Analyze this Leetcode problem solution based on my voice notes. Keep it brief - 2-3 paragraphs max.
+	return fmt.Sprintf(`Analyze this LeetCode problem solution based on my voice notes. Keep it brief - 2-3 paragraphs max.
 
 PROBLEM:
 %s
