@@ -15,10 +15,10 @@ import (
 	"github.com/j178/leetgo/lang"
 	"github.com/j178/leetgo/leetcode"
 
-	_ "github.com/j178/leetgo/stt_providers/elevenlabs"
-	stt "github.com/j178/leetgo/stt_providers"
-	_ "github.com/j178/leetgo/analysis_providers/claude"
 	analysis "github.com/j178/leetgo/analysis_providers"
+	_ "github.com/j178/leetgo/analysis_providers/claude"
+	stt "github.com/j178/leetgo/stt_providers"
+	_ "github.com/j178/leetgo/stt_providers/elevenlabs"
 )
 
 var recordForce bool
