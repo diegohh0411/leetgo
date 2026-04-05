@@ -129,8 +129,10 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bandsMsg:
 		m.bands = msg
-		// Keep reading while recording or paused (pipe stays open).
-		if m.status == statusRecording || m.status == statusPaused {
+		// Keep draining the pipe during statusStopping — cmd.Wait() blocks
+		// until the stdout pipe is fully read, so we must keep consuming
+		// PCM data while ffmpeg flushes and exits.
+		if m.status == statusRecording || m.status == statusPaused || m.status == statusStopping {
 			return m, readPCMCmd(m.pipe, numBandsForWidth(m.width))
 		}
 		return m, nil
@@ -152,12 +154,15 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "enter":
-			// Signal ffmpeg to stop; wait for it to flush the MP3 before quitting.
+			// Signal ffmpeg to stop; keep draining the pipe so cmd.Wait()
+			// doesn't deadlock on a full stdout buffer.
 			m.status = statusStopping
 			cmd := m.cmd
-			return m, func() tea.Msg {
+			stopCmd := func() tea.Msg {
 				return stopDoneMsg{err: stopRecording(cmd)}
 			}
+			drainCmd := readPCMCmd(m.pipe, numBandsForWidth(m.width))
+			return m, tea.Batch(stopCmd, drainCmd)
 
 		case " ":
 			if !m.canPause {
@@ -184,6 +189,9 @@ func (m *recorderModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *recorderModel) View() string {
 	switch m.status {
+	case statusStopping:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#ffaf00")).Render(
+			fmt.Sprintf("Saving %s...", m.filename))
 	case statusDone:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#5fff5f")).Render(
 			fmt.Sprintf("✓ Saved %s (%s)", m.filename, formatDuration(m.elapsed)))
