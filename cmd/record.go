@@ -1,15 +1,24 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/j178/leetgo/config"
 	"github.com/j178/leetgo/lang"
 	"github.com/j178/leetgo/leetcode"
+
+	analysis "github.com/j178/leetgo/analysis_providers"
+	_ "github.com/j178/leetgo/analysis_providers/claude"
+	stt "github.com/j178/leetgo/stt_providers"
+	_ "github.com/j178/leetgo/stt_providers/elevenlabs"
 )
 
 var recordForce bool
@@ -85,5 +94,125 @@ func runRecord(cmd *cobra.Command, args []string) error {
 	filename := fmt.Sprintf("attempt-%d.mp3", attempt)
 
 	// Launch the recording TUI.
-	return runRecorderTUI(outDir, filename, outputPath)
+	savedPath, err := runRecorderTUI(outDir, filename, outputPath)
+	if err != nil {
+		return err
+	}
+
+	// If recording was saved, offer post-recording workflow.
+	if savedPath != "" {
+		fmt.Println() // blank line after TUI
+		if promptYesNo("Transcribe now?", true) {
+			if err := transcribeFile(savedPath, outDir); err != nil {
+				fmt.Printf("Transcription error: %v\n", err)
+			} else {
+				mdName := fmt.Sprintf("attempt-%d.md", attempt)
+				fmt.Printf("✓ Transcribed → %s\n", mdName)
+
+				if promptYesNo("Analyze?", true) {
+					if err := runAnalysis(qs[0], outDir); err != nil {
+						fmt.Printf("Analysis error: %v\n", err)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// promptYesNo asks a yes/no question. defaultYes controls the default.
+func promptYesNo(question string, defaultYes bool) bool {
+	suffix := " [Y/n]"
+	if !defaultYes {
+		suffix = " [y/N]"
+	}
+	fmt.Printf("%s%s ", question, suffix)
+
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+
+	if input == "" {
+		return defaultYes
+	}
+	return input == "y" || input == "yes"
+}
+
+// transcribeFile transcribes a single audio file using the configured provider.
+func transcribeFile(audioPath, outDir string) error {
+	cfg := config.Get()
+	providerName := cfg.Audio.Transcribe.Provider
+	if providerName == "" {
+		providerName = "elevenlabs"
+	}
+
+	var providerConfig map[string]any
+	if providerName == "elevenlabs" {
+		providerConfig = cfg.Audio.Transcribe.ElevenLabs
+	}
+
+	provider, err := stt.Get(providerName, providerConfig)
+	if err != nil {
+		return err
+	}
+
+	text, err := provider.Transcribe(audioPath)
+	if err != nil {
+		return err
+	}
+
+	// Derive md filename from mp3 filename.
+	base := filepath.Base(audioPath)
+	m := attemptRe.FindStringSubmatch(base)
+	if m == nil {
+		return fmt.Errorf("unexpected audio filename: %s", base)
+	}
+	mdPath := filepath.Join(outDir, fmt.Sprintf("attempt-%s.md", m[1]))
+
+	return os.WriteFile(mdPath, []byte(text), 0o644)
+}
+
+// runAnalysis runs the analysis pipeline for a problem.
+func runAnalysis(q *leetcode.QuestionData, outDir string) error {
+	cfg := config.Get()
+	providerName := cfg.Audio.Analyze.Provider
+	if providerName == "" {
+		providerName = "claude"
+	}
+
+	var providerConfig map[string]any
+	if providerName == "claude" {
+		providerConfig = cfg.Audio.Analyze.Claude
+	}
+
+	provider, err := analysis.Get(providerName, providerConfig)
+	if err != nil {
+		return err
+	}
+
+	solution, err := readLatestSolution(outDir)
+	if err != nil {
+		return err
+	}
+
+	transcripts := readTranscripts(outDir)
+	if len(transcripts) == 0 {
+		return fmt.Errorf("no transcripts found")
+	}
+
+	ctx := analysis.AnalysisContext{
+		Question:    q.GetFormattedContent(),
+		Solution:    solution,
+		Transcripts: transcripts,
+	}
+
+	text, err := provider.Analyze(ctx)
+	if err != nil {
+		return err
+	}
+
+	analysisPath := filepath.Join(outDir, "analysis.md")
+	fmt.Println("Analyzing...")
+	return os.WriteFile(analysisPath, []byte(text), 0o644)
 }
