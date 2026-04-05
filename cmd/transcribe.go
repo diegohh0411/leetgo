@@ -165,6 +165,10 @@ func runTranscribe(cmd *cobra.Command, args []string) error {
 
 		// Derive output filename: attempt-N.mp3 → attempt-N.md
 		m := audioFileRe.FindStringSubmatch(audioFile)
+		if m == nil {
+			fmt.Printf("  Error: unexpected audio filename %q\n", audioFile)
+			continue
+		}
 		mdName := fmt.Sprintf("attempt-%s.md", m[1])
 		mdPath := filepath.Join(outDir, mdName)
 
