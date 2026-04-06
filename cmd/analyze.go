@@ -183,5 +183,11 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("✓ Saved %s\n", analysisPath)
+
+	// Auto-consolidate master analysis file.
+	if err := runConsolidate(cmd, nil); err != nil {
+		fmt.Printf("Warning: consolidation failed: %v\n", err)
+	}
+
 	return nil
 }

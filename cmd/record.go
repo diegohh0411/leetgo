@@ -240,6 +240,8 @@ func runRecord(cmd *cobra.Command, args []string) error {
 				if promptYesNo("Analyze?", true) {
 					if err := runAnalysis(qs[0], outDir); err != nil {
 						fmt.Printf("Analysis error: %v\n", err)
+					} else if err := runConsolidate(nil, nil); err != nil {
+						fmt.Printf("Warning: consolidation failed: %v\n", err)
 					}
 				}
 			}
