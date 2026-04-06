@@ -76,7 +76,7 @@ var nextCmd = &cobra.Command{
 
 		if len(due) == 0 {
 			if nearest != nil {
-				daysUntil := int(nearest.dueDate.Sub(today).Hours()/24) + 1
+				daysUntil := int(nearest.dueDate.Sub(today).Hours() / 24)
 				name := nearest.id
 				if nearest.problem.Title != "" {
 					name = fmt.Sprintf("%s (%s)", nearest.id, nearest.problem.Title)
