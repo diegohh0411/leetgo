@@ -35,16 +35,23 @@ const (
 	EN         Language     = "en"
 )
 
+type SpacedRepetitionConfig struct {
+	Intervals        []int  `yaml:"intervals" mapstructure:"intervals" comment:"Review intervals per Leitner box in days."`
+	MasteredInterval int    `yaml:"mastered_interval" mapstructure:"mastered_interval" comment:"Interval in days for mastered problems."`
+	HistoryFile      string `yaml:"history_file" mapstructure:"history_file" comment:"Path to history file relative to project root."`
+}
+
 type Config struct {
 	dir         string
 	projectRoot string
-	Author      string         `yaml:"author" mapstructure:"author" comment:"Your name"`
-	Language    Language       `yaml:"language" mapstructure:"language" comment:"Language of the question description: 'zh' (Simplified Chinese) or 'en' (English)."`
-	Code        CodeConfig     `yaml:"code" mapstructure:"code"`
-	LeetCode    LeetCodeConfig `yaml:"leetcode" mapstructure:"leetcode"`
-	Contest     ContestConfig  `yaml:"contest" mapstructure:"contest"`
-	Editor      Editor         `yaml:"editor" mapstructure:"editor" comment:"Editor settings to open generated files."`
-	Audio       AudioConfig    `yaml:"audio" mapstructure:"audio"`
+	Author      string                 `yaml:"author" mapstructure:"author" comment:"Your name"`
+	Language    Language               `yaml:"language" mapstructure:"language" comment:"Language of the question description: 'zh' (Simplified Chinese) or 'en' (English)."`
+	Code        CodeConfig             `yaml:"code" mapstructure:"code"`
+	LeetCode    LeetCodeConfig         `yaml:"leetcode" mapstructure:"leetcode"`
+	Contest     ContestConfig          `yaml:"contest" mapstructure:"contest"`
+	Editor      Editor                 `yaml:"editor" mapstructure:"editor" comment:"Editor settings to open generated files."`
+	Audio       AudioConfig            `yaml:"audio" mapstructure:"audio"`
+	SpacedRepetition SpacedRepetitionConfig `yaml:"spaced_repetition" mapstructure:"spaced_repetition"`
 }
 
 type ContestConfig struct {
@@ -198,6 +205,10 @@ func (c *Config) ConfigFile() string {
 	return filepath.Join(c.ProjectRoot(), constants.ConfigFilename)
 }
 
+func (c *Config) HistoryFile() string {
+	return filepath.Join(c.ProjectRoot(), c.SpacedRepetition.HistoryFile)
+}
+
 func (c *Config) StateFile() string {
 	return filepath.Join(c.CacheDir(), constants.StateFilename)
 }
@@ -272,6 +283,11 @@ func defaultConfig() *Config {
 			OutDir:           "contest",
 			FilenameTemplate: `{{ .ContestShortSlug }}/{{ .Id }}{{ if .SlugIsMeaningful }}.{{ .Slug }}{{ end }}`,
 			OpenInBrowser:    true,
+		},
+		SpacedRepetition: SpacedRepetitionConfig{
+			Intervals:        []int{1, 3, 7, 14, 30},
+			MasteredInterval: 45,
+			HistoryFile:      constants.HistoryFilename,
 		},
 	}
 }
