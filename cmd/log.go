@@ -19,8 +19,20 @@ func init() {
 }
 
 var logCmd = &cobra.Command{
-	Use:     "log qid rating",
-	Short:   "Log a problem attempt with a self-evaluated rating (1-5)",
+	Use:   "log qid rating",
+	Short: "Log a problem attempt with a self-evaluated rating (1-5)",
+	Long: `Log a problem attempt with a self-evaluated rating (1-5).
+
+Rating scale:
+  5 — Solved perfectly, no issues
+  4 — Solved with minor hesitation
+  3 — Solved but had to consult external syntax reference
+  2 — Struggled significantly, needed major help
+  1 — Couldn't solve it
+
+Ratings affect which Leitner box the problem moves to, determining when
+it resurfaces in 'leetgo next'. Three consecutive 5-star ratings marks
+a problem as mastered (reviewed every 45 days).`,
 	Example: "leetgo log 532 5\nleetgo log 999 3 --force",
 	Args:    cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
