@@ -143,6 +143,8 @@ func initCommands() {
 		submitCmd,
 		fixCmd,
 		editCmd,
+		logCmd,
+		nextCmd,
 		recordCmd,
 		transcribeCmd,
 		analyzeCmd,
